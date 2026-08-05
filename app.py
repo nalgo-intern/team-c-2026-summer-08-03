@@ -28,7 +28,7 @@ if ingredient_text:
 if uploaded_files:
     st.write("アップロードされた画像:")
     for uploaded_file in uploaded_files:
-        st.image(uploaded_file, caption=uploaded_file.name, use_column_width=True)
+        st.image(uploaded_file, caption=uploaded_file.name, use_container_width=True)
 if ingredients:
     if st.button("レシピを探す"):
         st.write("レシピを検索中...")
