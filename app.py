@@ -1,4 +1,12 @@
 import streamlit as st 
+import io
+from recognize import recognize
+
+@st.cache_data(show_spinner="画像を認識中...")
+def recognize_image(data: bytes):
+    return recognize(io.BytesIO(data), top_k=3)
+
+
 
 st.title("レシピ提案アプリ") 
 st.write("食材からレシピを提案します。")
@@ -56,7 +64,34 @@ if ingredient_text:
 if uploaded_files:
     st.write("アップロードされた画像:")
     for uploaded_file in uploaded_files:
-        st.image(uploaded_file, caption=uploaded_file.name, use_container_width=True)
+        data = uploaded_file.getvalue()
+        st.image(data, caption=uploaded_file.name, use_container_width=True)
+
+        results = recognize_image(data)
+        names = [r["name"] for r in results]
+
+        choice = st.radio(
+            "この画像の食材を選んでください",
+            options=names,
+            captions=[f"類似度 {r['score']:.2f}" for r in results],
+            key=f"choice_{uploaded_file.file_id}",
+        )
+
+        if st.button("食材に追加", key=f"add_{uploaded_file.file_id}"):
+            if choice not in st.session_state.ingredients:
+                st.session_state.ingredients.append(choice)
+            st.rerun()
+
+
+if st.session_state.ingredients:
+    st.subheader("選択された食材")
+    for name in st.session_state.ingredients:
+        col1, col2 = st.columns([4, 1])
+        col1.write(f"・{name}")
+        if col2.button("削除", key=f"del_{name}"):
+            st.session_state.ingredients.remove(name)
+            st.rerun()
+
 
 if ingredients:
     
