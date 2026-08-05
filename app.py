@@ -45,22 +45,23 @@ if "ingredients" not in st.session_state:
 
 st.subheader("食材を入力") 
 
-ingredient_text = st.text_input("食材をカンマ区切りで入力してください", placeholder="例: 鶏肉, 玉ねぎ, にんじん") 
+# form にしているのは、Enterで送信できることと、追加後に入力欄が空になること
+# （clear_on_submit）の2つのため。text_input を作った後に session_state を
+# 書き換えてクリアする方法は Streamlit が禁止していて例外になる。
+with st.form("add_text", clear_on_submit=True):
+    ingredient_text = st.text_input("食材をカンマ区切りで入力してください", placeholder="例: 鶏肉, 玉ねぎ, にんじん")
+    submitted = st.form_submit_button("追加")
 
-ingredients = [ 
-    ingredient.strip() 
-    for ingredient in ingredient_text.split(",") 
-    if ingredient.strip() ] 
+if submitted:
+    for name in [s.strip() for s in ingredient_text.split(",") if s.strip()]:
+        if name not in st.session_state.ingredients:  # 重複防止
+            st.session_state.ingredients.append(name)
+    st.rerun()
 
 st.subheader("食材の画像アップロード") 
 
-uploaded_files = st.file_uploader("食材の画像をアップロードしてください", accept_multiple_files=True, type=["jpg", "jpeg", "png"]) 
-if ingredient_text: 
-    ingredients = [ingredient.strip() for ingredient in ingredient_text.split(",")] 
-    st.write("入力された食材:") 
-    for ingredient in ingredients:
-        st.write("・", ingredient) 
-        
+uploaded_files = st.file_uploader("食材の画像をアップロードしてください", accept_multiple_files=True, type=["jpg", "jpeg", "png"])
+
 if uploaded_files:
     st.write("アップロードされた画像:")
     for uploaded_file in uploaded_files:
@@ -83,43 +84,44 @@ if uploaded_files:
             st.rerun()
 
 
-if st.session_state.ingredients:
-    st.subheader("選択された食材")
+st.subheader("選択中の食材")
+
+if not st.session_state.ingredients:
+    st.info("食材を入力するか、画像から選択してください")
+else:
     for name in st.session_state.ingredients:
         col1, col2 = st.columns([4, 1])
         col1.write(f"・{name}")
+        # remove() でループ中のリストを書き換えているが、直後の st.rerun() が
+        # 実行を打ち切るのでループは続行されない。この rerun は消さないこと。
         if col2.button("削除", key=f"del_{name}"):
             st.session_state.ingredients.remove(name)
             st.rerun()
 
 
-if ingredients:
-    
-    if st.button("レシピを探す"):
-        
-        results = []
-        
-        for recipe in recipes:
-            matched = set(ingredients) & set(recipe["ingredients"])
-            
-            if matched:
-                results.append(recipe)
-                
-        st.subheader("レシピ検索結果")
-               
-        if results:
-            st.write(f"{len(results)}件のレシピが見つかりました。")
+# 仕様書 要件2「食材が一つも選択されていないときは、検索開始ボタンは押せないようにする(disabled)」
+if st.button("レシピを探す", disabled=not st.session_state.ingredients):
 
-            for recipe in results:
-                st.markdown("---")
-                st.subheader(recipe["name"])
-                st.write("材料："+"、".join(recipe["ingredients"]))
-                st.write("調理時間：" + str(recipe["minutes"]) + "分")
-    
-        else:
-            st.write("該当するレシピは見つかりませんでした。")
+    found = []
 
-else:
-    st.write("食材を入力してください。")
+    for recipe in recipes:
+        matched = set(st.session_state.ingredients) & set(recipe["ingredients"])
+
+        if matched:
+            found.append(recipe)
+
+    st.subheader("レシピ検索結果")
+
+    if found:
+        st.write(f"{len(found)}件のレシピが見つかりました。")
+
+        for recipe in found:
+            st.markdown("---")
+            st.subheader(recipe["name"])
+            st.write("材料："+"、".join(recipe["ingredients"]))
+            st.write("調理時間：" + str(recipe["minutes"]) + "分")
+
+    else:
+        st.write("該当するレシピは見つかりませんでした。")
             
 
