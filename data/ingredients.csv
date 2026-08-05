@@ -70,7 +70,7 @@ name,en_label,is_seasoning,aliases
 かに風味かまぼこ,imitation crab stick,FALSE,カニカマ;かにかま
 かまぼこ,kamaboko fish cake,FALSE,蒲鉾
 卵,egg,FALSE,たまご;タマゴ;鶏卵;玉子
-豆腐,tofu,FALSE,とうふ;木綿豆腐;絹豆腐
+豆腐,a block of plain white tofu,FALSE,とうふ;木綿豆腐;絹豆腐
 厚揚げ,thick fried tofu,FALSE,あつあげ
 油揚げ,fried tofu pouch,FALSE,あぶらあげ;あげ
 高野豆腐,dried tofu,FALSE,こうやどうふ
