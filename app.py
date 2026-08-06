@@ -1,44 +1,22 @@
-import streamlit as st 
+import streamlit as st
 import io
 from recognize import recognize
+from recommend import recommend
 
 @st.cache_data(show_spinner="画像を認識中...")
 def recognize_image(data: bytes):
     return recognize(io.BytesIO(data), top_k=3)
 
 
+SEARCH_SITES = [
+    ("クックパッド", "https://cookpad.com/search/{}"),
+    ("クラシル", "https://www.kurashiru.com/search?query={}"),
+    ("デリッシュキッチン", "https://delishkitchen.tv/search?q={}"),
+]
 
 st.title("レシピ提案アプリ") 
 st.write("食材からレシピを提案します。")
 st.write("食材をテキストで入力、または画像アップロードで食材を認識させることができます。")
-
-recipes = [
-    {
-        "name": "親子丼",
-        "ingredients": ["鶏肉", "卵", "玉ねぎ"],
-        "minutes": 20
-    },
-    {
-        "name": "照り焼きチキン",
-        "ingredients": ["鶏肉", "玉ねぎ"],
-        "minutes": 15
-    },
-    {
-        "name": "肉じゃが",
-        "ingredients": ["鶏肉", "じゃがいも", "玉ねぎ", "にんじん"],
-        "minutes": 30
-    },
-    {
-        "name": "野菜炒め",
-        "ingredients": ["キャベツ", "にんじん", "ピーマン", "玉ねぎ"],
-        "minutes": 10
-    },
-    {
-        "name": "オムライス",
-        "ingredients": ["卵", "玉ねぎ", "鶏肉"],
-        "minutes": 25
-    }
-]
 
 if "ingredients" not in st.session_state:
     st.session_state.ingredients = [] 
@@ -66,7 +44,7 @@ if uploaded_files:
     st.write("アップロードされた画像:")
     for uploaded_file in uploaded_files:
         data = uploaded_file.getvalue()
-        st.image(data, caption=uploaded_file.name, use_container_width=True)
+        st.image(data, caption=uploaded_file.name, width="stretch")
 
         results = recognize_image(data)
         names = [r["name"] for r in results]
@@ -102,26 +80,41 @@ else:
 # 仕様書 要件2「食材が一つも選択されていないときは、検索開始ボタンは押せないようにする(disabled)」
 if st.button("レシピを探す", disabled=not st.session_state.ingredients):
 
-    found = []
-
-    for recipe in recipes:
-        matched = set(st.session_state.ingredients) & set(recipe["ingredients"])
-
-        if matched:
-            found.append(recipe)
+    found, unknown = recommend(st.session_state.ingredients, top_k=5)
 
     st.subheader("レシピ検索結果")
 
-    if found:
+    # 仕様書 テスト項目4「データに存在しない食材を入力 → 無視され、未登録である旨を表示」
+    if unknown:
+        st.warning("次の食材は未登録のため、検索から除外しました: " + "、".join(unknown))
+
+    # 仕様書 テスト項目6「合致率が閾値未満 → レシピを表示せず『該当なし』を表示」
+    if not found:
+        st.write("該当するレシピは見つかりませんでした。")
+    else:
         st.write(f"{len(found)}件のレシピが見つかりました。")
 
         for recipe in found:
             st.markdown("---")
-            st.subheader(recipe["name"])
-            st.write("材料："+"、".join(recipe["ingredients"]))
-            st.write("調理時間：" + str(recipe["minutes"]) + "分")
 
-    else:
-        st.write("該当するレシピは見つかりませんでした。")
-            
+            col_img, col_info = st.columns([1, 2])
+            col_img.image(f"data/images/{recipe['image']}", width="stretch")
 
+            col_info.subheader(recipe["name"], anchor=False)
+            col_info.write(f"合致率 {recipe['match_rate']:.0%} ／ {recipe['minutes']}分 ／ {recipe['servings']}人分")
+            col_info.write("使用食材：" + "、".join(recipe["items"]))
+            if recipe["missing"]:
+                col_info.warning("不足している食材：" + "、".join(recipe["missing"]))
+
+            # 仕様書 要件4「詳細をタッチすると見れる」
+            with st.expander("詳細（材料と作り方）"):
+                st.write("**材料**")
+                for name, amount in zip(recipe["items"], recipe["amounts"].split(";")):
+                    st.write(f"・{name}　{amount}")
+
+                st.write("**作り方**")
+                for i, step in enumerate(recipe["steps"].split(";"), 1):
+                    st.write(f"{i}. {step}")
+
+                for col, (site, url) in zip(st.columns(len(SEARCH_SITES)), SEARCH_SITES):
+                    col.link_button(f"{site}で検索", url.format(recipe["name"]), width="stretch")
