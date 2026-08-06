@@ -184,7 +184,8 @@ uploaded_files = st.file_uploader("食材の画像をアップロードしてく
 if uploaded_files:
     st.write("アップロードされた画像:")
     for uploaded_file in uploaded_files:
-        st.image(uploaded_file, caption=uploaded_file.name, use_container_width=True)
+        data = uploaded_file.getvalue()
+        st.image(data, caption=uploaded_file.name, use_container_width=True)
 
 if ingredients:
     
@@ -221,16 +222,57 @@ if ingredients:
         if results:
             st.write(f"{len(results)}件のレシピが見つかりました。")
 
-            for recipe in results:
-                st.markdown("---")
-                st.subheader(recipe["name"])
-                st.write("材料："+"、".join(recipe["ingredients"]))
-                st.write("調理時間：" + str(recipe["minutes"]) + "分")
-    
-        else:
-            st.write("該当するレシピは見つかりませんでした。")
+        choice = st.radio(
+            "この画像の食材を選んでください",
+            options=names,
+            captions=[f"類似度 {r['score']:.2f}" for r in results],
+            key=f"choice_{uploaded_file.file_id}",
+        )
 
+        if st.button("食材に追加", key=f"add_{uploaded_file.file_id}"):
+            if choice not in st.session_state.ingredients:
+                st.session_state.ingredients.append(choice)
+            st.rerun()
+
+
+st.subheader("選択中の食材")
+
+if not st.session_state.ingredients:
+    st.info("食材を入力するか、画像から選択してください")
 else:
-    st.write("食材を入力してください。")
+    for name in st.session_state.ingredients:
+        col1, col2 = st.columns([4, 1])
+        col1.write(f"・{name}")
+        # remove() でループ中のリストを書き換えているが、直後の st.rerun() が
+        # 実行を打ち切るのでループは続行されない。この rerun は消さないこと。
+        if col2.button("削除", key=f"del_{name}"):
+            st.session_state.ingredients.remove(name)
+            st.rerun()
+
+
+# 仕様書 要件2「食材が一つも選択されていないときは、検索開始ボタンは押せないようにする(disabled)」
+if st.button("レシピを探す", disabled=not st.session_state.ingredients):
+
+    found = []
+
+    for recipe in recipes:
+        matched = set(st.session_state.ingredients) & set(recipe["ingredients"])
+
+        if matched:
+            found.append(recipe)
+
+    st.subheader("レシピ検索結果")
+
+    if found:
+        st.write(f"{len(found)}件のレシピが見つかりました。")
+
+        for recipe in found:
+            st.markdown("---")
+            st.subheader(recipe["name"])
+            st.write("材料："+"、".join(recipe["ingredients"]))
+            st.write("調理時間：" + str(recipe["minutes"]) + "分")
+
+    else:
+        st.write("該当するレシピは見つかりませんでした。")
             
 
