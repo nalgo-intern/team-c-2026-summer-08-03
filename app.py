@@ -28,7 +28,6 @@ with open("data/ingredients.csv", "r", encoding="utf-8-sig") as f:
     for row in reader:
         ingredient_data.append(row)
 
-
 if "ingredients" not in st.session_state:          # 選択中の食材（テキスト・画像の共通の置き場）
     st.session_state.ingredients = []
 
@@ -41,6 +40,11 @@ if "selected_suggestion" not in st.session_state:  # 押された候補
 if "clear_input" not in st.session_state:          # 追加後に入力欄を空にするためのフラグ
     st.session_state.clear_input = False
 
+if "image_queue" not in st.session_state:          # 認識待ちの画像 [{"id","name","data"}]
+    st.session_state.image_queue = []
+
+if "uploader_round" not in st.session_state:       # アップローダーを作り直すための世代番号
+    st.session_state.uploader_round = 0
 
 # st.session_state.ingredient_input を書き換えられるのは text_input を作る前だけ。
 # ウィジェット生成後に書き換えると StreamlitAPIException になるため、この位置で行う。
@@ -178,27 +182,56 @@ if st.button("追加", disabled=not ingredient_text.strip()):
 
 st.subheader("食材の画像アップロード", anchor=False)
 
-uploaded_files = st.file_uploader("食材の画像をアップロードしてください", accept_multiple_files=True, type=["jpg", "jpeg", "png"])
-
+uploaded_files = st.file_uploader(
+    "食材の画像をアップロードしてください",
+    accept_multiple_files=True,
+    type=["jpg", "jpeg", "png"],
+    key=f"uploader_{st.session_state.uploader_round}",
+)
+# アップローダーからは1枚だけ取り除くことができないので、受け取ったら即座に
+# 自前のキューへ移し、key を変えてアップローダーを空の状態に作り直す。
+# 以降の表示はキューが元になるため、1枚ずつ消せるようになる。
 if uploaded_files:
-    st.write("アップロードされた画像:")
-    for uploaded_file in uploaded_files:
-        data = uploaded_file.getvalue()
-        st.image(data, caption=uploaded_file.name, width=250)
+    known = {item["id"] for item in st.session_state.image_queue}
+    for f in uploaded_files:
+        if f.file_id not in known:
+            st.session_state.image_queue.append(
+                {"id": f.file_id, "name": f.name, "data": f.getvalue()}
+            )
+    st.session_state.uploader_round += 1
+    st.rerun()
 
-        results = recognize_image(data)
+if st.session_state.image_queue:
+    st.write("アップロードされた画像:")
+    for item in st.session_state.image_queue:
+        st.image(item["data"], caption=item["name"], width=250)
+
+        results = recognize_image(item["data"])
         names = [r["name"] for r in results]
 
         choice = st.radio(
             "この画像の食材を選んでください",
             options=names,
             captions=[f"類似度 {r['score']:.2f}" for r in results],
-            key=f"choice_{uploaded_file.file_id}",
+            key=f"choice_{item['id']}",
         )
 
-        if st.button("食材に追加", key=f"add_{uploaded_file.file_id}"):
+        col_add, col_skip = st.columns([1, 4])
+
+        # 選んだ画像だけをキューから取り除く。直後の st.rerun() が実行を打ち切るので、
+        # ループ中にリストを差し替えても続行されない。
+        if col_add.button("食材に追加", key=f"add_{item['id']}"):
             if choice not in st.session_state.ingredients:
                 st.session_state.ingredients.append(choice)
+            st.session_state.image_queue = [
+                q for q in st.session_state.image_queue if q["id"] != item["id"]
+            ]
+            st.rerun()
+
+        if col_skip.button("この画像を削除", key=f"skip_{item['id']}"):
+            st.session_state.image_queue = [
+                q for q in st.session_state.image_queue if q["id"] != item["id"]
+            ]
             st.rerun()
 
 
