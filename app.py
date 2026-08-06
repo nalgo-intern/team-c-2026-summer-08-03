@@ -281,7 +281,12 @@ if st.button("レシピを探す", disabled=not st.session_state.ingredients):
             col_img.image(f"data/images/{recipe['image']}", width="stretch")
 
             col_info.subheader(recipe["name"], anchor=False)
-            col_info.write(f"合致率 {recipe['match_rate']:.0%} ／ {recipe['minutes']}分 ／ {recipe['servings']}人分")
+            col_info.write(
+                f"合致率 {recipe['match_rate']:.0%}" 
+                f" ／ 手元の食材を {recipe['usage_rate']:.0%} 使用"
+                f" ／ {recipe['minutes']}分 ／ {recipe['servings']}人分"
+            )
+            col_info.write("使用する手元の食材：" + "、".join(recipe["used"]))
             col_info.write("使用食材：" + "、".join(recipe["items"]))
             if recipe["missing"]:
                 col_info.warning("不足している食材：" + "、".join(recipe["missing"]))

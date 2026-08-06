@@ -98,10 +98,26 @@ def recommend(ingredients: list[str], top_k: int = 5):
     results = []
     for recipe, sim in zip(_recipes, sims):
         rate, missing = calc_match(have, recipe["main"])
+
+        """
+        選択した食材の中から1つでも合っていたら検索に引っかかって、
+        両方一気に消費するものを提案してくれるわけではない
+        という問題点を解消する
+        """
+        # ① 消費率 = 手元の食材のうち、このレシピで使えるものの割合
+        main_known = [x for x in known if x not in _seasonings] # 合致率と同じく、調味料は常備前提として分母から除く   
+        used = [x for x in main_known if x in recipe["main"]]
+        usage = len(used) / len(main_known) if main_known else 0.0
+        # ② 合致率と消費率の調和平均。どちらかが低いと全体が下がる
+        score = 0.0 if rate + usage == 0 else 2 * rate * usage / (rate + usage)
+
         results.append(
             {
                 **recipe,
                 "match_rate": rate,
+                "usage_rate": usage,
+                "used": used,
+                "score": score,
                 "similarity": float(sim),
                 "missing": missing,
             }
@@ -110,8 +126,8 @@ def recommend(ingredients: list[str], top_k: int = 5):
     # 合致率が閾値未満のものは候補から外す
     results = [r for r in results if r["match_rate"] >= MATCH_THRESHOLD]
 
-    # 第1に合致率で比較し、第2に類似度で比較
-    results.sort(key=lambda r: (-r["match_rate"], -r["similarity"]))
+    # 第1に合致率と消費率の調和平均で比較し、第2に類似度で比較
+    results.sort(key=lambda r: (-r["score"], -r["similarity"]))
     return results[:top_k], unknown
 
 
