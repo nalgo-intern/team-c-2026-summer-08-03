@@ -1,8 +1,24 @@
 import streamlit as st 
+import csv
+from difflib import SequenceMatcher 
 
 st.title("レシピ提案アプリ") 
 st.write("食材からレシピを提案します。")
 st.write("食材をテキストで入力、または画像アップロードで食材を認識させることができます。")
+
+ingredient_data = []
+
+with open("data/ingredients.csv", "r", encoding="utf-8-sig") as f:
+    reader = csv.DictReader(f)
+
+    for row in reader:
+        ingredient_data.append(row)
+
+if "ingredient_input" not in st.session_state:
+    st.session_state.ingredient_input = ""
+
+if "selected_suggestion" not in st.session_state:
+    st.session_state.selected_suggestion = None
 
 recipes = [
     {
@@ -33,25 +49,137 @@ recipes = [
 ]
 
 if "ingredients" not in st.session_state:
-    st.session_state.ingredients = [] 
+    st.session_state.ingredients = []
 
-st.subheader("食材を入力") 
+if "selected_ingredients" not in st.session_state:
+    st.session_state.selected_suggestions = None
 
-ingredient_text = st.text_input("食材をカンマ区切りで入力してください", placeholder="例: 鶏肉, 玉ねぎ, にんじん") 
+if st.session_state.selected_suggestion:
 
+    suggestion = st.session_state.selected_suggestion
+
+    current_text = st.session_state.ingredient_input
+
+    current_ingredients = [
+        ingredient.strip()
+        for ingredient in current_text.split(",")
+        if ingredient.strip()
+    ]
+
+    if current_ingredients:
+        current_ingredients[-1] = suggestion
+    else:
+        current_ingredients.append(suggestion)
+
+    st.session_state.ingredient_input = ", ".join(current_ingredients)
+
+    st.session_state.selected_suggestion = None
+
+st.subheader("食材を入力")
+
+ingredient_text = st.text_input("食材をカンマ区切りで入力してください",placeholder="例: 鶏肉, 玉ねぎ, にんじん",key="ingredient_input")
+
+suggestions = []
+
+if ingredient_text:
+
+    current_input = ingredient_text.split(",")[-1].strip()
+
+    if current_input:
+        exact_name = False
+
+        for row in ingredient_data:
+
+            name = row["name"].strip()
+
+            if current_input == name:
+                exact_name = True
+                break
+
+        if not exact_name:
+
+            for row in ingredient_data:
+
+                name = row["name"].strip()
+
+                aliases = [
+                    alias.strip()
+                    for alias in row["aliases"].split(";")
+                    if alias.strip()
+                ]
+
+                if current_input in aliases:
+                    suggestions.append(name)
+
+            if len(current_input) >= 2:
+
+                for row in ingredient_data:
+
+                    name = row["name"].strip()
+                    if name.startswith(current_input):
+
+                        suggestions.append(name)
+
+                    aliases = [
+                        alias.strip()
+                        for alias in row["aliases"].split(";")
+                        if alias.strip()
+                    ]
+
+                    for alias in aliases:
+
+                        if alias.startswith(current_input):
+                            suggestions.append(name)
+                            break
+
+                for row in ingredient_data:
+
+                    name = row["name"].strip()
+
+                    aliases = [
+                        alias.strip()
+                        for alias in row["aliases"].split(";")
+                        if alias.strip()
+                    ]
+
+                    for alias in aliases:
+
+                        similarity = SequenceMatcher(None,current_input,alias).ratio()
+
+                        if similarity >= 0.7:
+                            suggestions.append(name)
+                            break
+
+        suggestions = list(dict.fromkeys(suggestions))
+
+        suggestions = suggestions[:3]
+
+if suggestions:
+
+    st.write("もしかして...")
+
+    for i, suggestion in enumerate(suggestions):
+
+        if st.button(suggestion,key=f"suggestion_{i}_{suggestion}"):
+
+            st.session_state.selected_suggestion = suggestion
+
+            st.rerun()
+                
 ingredients = [ 
     ingredient.strip() 
     for ingredient in ingredient_text.split(",") 
-    if ingredient.strip() ] 
+    if ingredient.strip() 
+]
+
+if ingredients:
+    st.write("入力された食材:")
+    for ingredient in ingredients:
+        st.write("・", ingredient) 
 
 st.subheader("食材の画像アップロード") 
 
 uploaded_files = st.file_uploader("食材の画像をアップロードしてください", accept_multiple_files=True, type=["jpg", "jpeg", "png"]) 
-if ingredient_text: 
-    ingredients = [ingredient.strip() for ingredient in ingredient_text.split(",")] 
-    st.write("入力された食材:") 
-    for ingredient in ingredients:
-        st.write("・", ingredient) 
         
 if uploaded_files:
     st.write("アップロードされた画像:")
@@ -64,8 +192,26 @@ if ingredients:
         
         results = []
         
+        normalized_ingredients = []
+        
+        for ingredient in ingredients:
+            normalized_name = ingredient
+            for row in ingredient_data:
+                name = row["name"]
+                if ingredient == name:
+                    normalized_name = row["name"]
+                    break
+                aliases = row["aliases"].split(";")
+
+                if ingredient in aliases:
+
+                    normalized_name = name
+                    break
+
+            normalized_ingredients.append(normalized_name)
+        
         for recipe in recipes:
-            matched = set(ingredients) & set(recipe["ingredients"])
+            matched = set(normalized_ingredients) & set(recipe["ingredients"])
             
             if matched:
                 results.append(recipe)
