@@ -237,17 +237,24 @@ if st.session_state.image_queue:
 
 st.subheader("選択中の食材", anchor=False)
 
-if not st.session_state.ingredients:
-    st.info("食材を入力するか、画像から選択してください")
-else:
-    for name in st.session_state.ingredients:
-        col1, col2 = st.columns([4, 1])
-        col1.write(f"・{name}")
-        # remove() でループ中のリストを書き換えているが、直後の st.rerun() が
-        # 実行を打ち切るのでループは続行されない。この rerun は消さないこと。
-        if col2.button("削除", key=f"del_{name}"):
-            st.session_state.ingredients.remove(name)
-            st.rerun()
+with st.container(border=True):
+    if not st.session_state.ingredients:
+        st.info("食材を入力するか、画像から選択してください")
+    else:
+        st.caption("✕ を押すと削除できます")
+        # 外側の horizontal=True でチップが横に並び、幅に応じて折り返す
+        with st.container(horizontal=True):
+            for name in st.session_state.ingredients:
+                # チップ1つ分。食材名はただの文字で、✕ だけをボタンにする。
+                # width="content" が無いと、折り返した行のチップが横幅いっぱいに広がる。
+                with st.container(horizontal=True, border=True, gap="xxsmall",
+                                  width="content", vertical_alignment="center"):
+                    st.markdown(name)
+                    # remove() でループ中のリストを書き換えているが、直後の st.rerun() が
+                    # 実行を打ち切るのでループは続行されない。この rerun は消さないこと。
+                    if st.button("✕", key=f"del_{name}", type="tertiary"):
+                        st.session_state.ingredients.remove(name)
+                        st.rerun()
 
 
 # 仕様書 要件2「食材が一つも選択されていないときは、検索開始ボタンは押せないようにする(disabled)」
