@@ -185,7 +185,7 @@ if uploaded_files:
     st.write("アップロードされた画像:")
     for uploaded_file in uploaded_files:
         data = uploaded_file.getvalue()
-        st.image(data, caption=uploaded_file.name, use_container_width=True)
+        st.image(data, caption=uploaded_file.name, width=250)
 
 if ingredients:
     
