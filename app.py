@@ -1,7 +1,10 @@
 import streamlit as st
+import csv
 import io
+from difflib import SequenceMatcher
 from recognize import recognize
 from recommend import recommend
+
 
 @st.cache_data(show_spinner="画像を認識中...")
 def recognize_image(data: bytes):
@@ -14,29 +17,166 @@ SEARCH_SITES = [
     ("デリッシュキッチン", "https://delishkitchen.tv/search?q={}"),
 ]
 
-st.title("レシピ提案アプリ") 
+st.title("レシピ提案アプリ")
 st.write("食材からレシピを提案します。")
 st.write("食材をテキストで入力、または画像アップロードで食材を認識させることができます。")
 
-if "ingredients" not in st.session_state:
-    st.session_state.ingredients = [] 
+# 入力候補（もしかして...）の元データ
+ingredient_data = []
+with open("data/ingredients.csv", "r", encoding="utf-8-sig") as f:
+    reader = csv.DictReader(f)
+    for row in reader:
+        ingredient_data.append(row)
 
-st.subheader("食材を入力") 
 
-# form にしているのは、Enterで送信できることと、追加後に入力欄が空になること
-# （clear_on_submit）の2つのため。text_input を作った後に session_state を
-# 書き換えてクリアする方法は Streamlit が禁止していて例外になる。
-with st.form("add_text", clear_on_submit=True):
-    ingredient_text = st.text_input("食材をカンマ区切りで入力してください", placeholder="例: 鶏肉, 玉ねぎ, にんじん")
-    submitted = st.form_submit_button("追加")
+if "ingredients" not in st.session_state:          # 選択中の食材（テキスト・画像の共通の置き場）
+    st.session_state.ingredients = []
 
-if submitted:
+if "ingredient_input" not in st.session_state:     # テキスト入力欄の中身
+    st.session_state.ingredient_input = ""
+
+if "selected_suggestion" not in st.session_state:  # 押された候補
+    st.session_state.selected_suggestion = None
+
+if "clear_input" not in st.session_state:          # 追加後に入力欄を空にするためのフラグ
+    st.session_state.clear_input = False
+
+
+# st.session_state.ingredient_input を書き換えられるのは text_input を作る前だけ。
+# ウィジェット生成後に書き換えると StreamlitAPIException になるため、この位置で行う。
+if st.session_state.selected_suggestion:
+
+    suggestion = st.session_state.selected_suggestion
+
+    current_text = st.session_state.ingredient_input
+
+    current_ingredients = [
+        ingredient.strip()
+        for ingredient in current_text.split(",")
+        if ingredient.strip()
+    ]
+
+    # 入力途中の最後の1つを、押された候補で置き換える
+    if current_ingredients:
+        current_ingredients[-1] = suggestion
+    else:
+        current_ingredients.append(suggestion)
+
+    st.session_state.ingredient_input = ", ".join(current_ingredients)
+
+    st.session_state.selected_suggestion = None
+
+if st.session_state.clear_input:
+    st.session_state.ingredient_input = ""
+    st.session_state.clear_input = False
+
+
+st.subheader("食材を入力", anchor=False)
+
+ingredient_text = st.text_input(
+    "食材をカンマ区切りで入力してください",
+    placeholder="例: 鶏肉, 玉ねぎ, にんじん",
+    key="ingredient_input",
+)
+
+# 仕様書 要件1「『トマ』と打ったら『トマト』が表示される」
+suggestions = []
+
+if ingredient_text:
+
+    current_input = ingredient_text.split(",")[-1].strip()
+
+    if current_input:
+        exact_name = False
+
+        for row in ingredient_data:
+
+            name = row["name"].strip()
+
+            if current_input == name:
+                exact_name = True
+                break
+
+        if not exact_name:
+
+            for row in ingredient_data:
+
+                name = row["name"].strip()
+
+                aliases = [
+                    alias.strip()
+                    for alias in row["aliases"].split(";")
+                    if alias.strip()
+                ]
+
+                if current_input in aliases:
+                    suggestions.append(name)
+
+            if len(current_input) >= 2:
+
+                for row in ingredient_data:
+
+                    name = row["name"].strip()
+                    if name.startswith(current_input):
+
+                        suggestions.append(name)
+
+                    aliases = [
+                        alias.strip()
+                        for alias in row["aliases"].split(";")
+                        if alias.strip()
+                    ]
+
+                    for alias in aliases:
+
+                        if alias.startswith(current_input):
+                            suggestions.append(name)
+                            break
+
+                for row in ingredient_data:
+
+                    name = row["name"].strip()
+
+                    aliases = [
+                        alias.strip()
+                        for alias in row["aliases"].split(";")
+                        if alias.strip()
+                    ]
+
+                    for alias in aliases:
+
+                        similarity = SequenceMatcher(None, current_input, alias).ratio()
+
+                        if similarity >= 0.7:
+                            suggestions.append(name)
+                            break
+
+        suggestions = list(dict.fromkeys(suggestions))
+
+        suggestions = suggestions[:3]
+
+if suggestions:
+
+    st.write("もしかして...")
+
+    for i, suggestion in enumerate(suggestions):
+
+        if st.button(suggestion, key=f"suggestion_{i}_{suggestion}"):
+
+            st.session_state.selected_suggestion = suggestion
+
+            st.rerun()
+
+# 入力欄の中身を「選択中の食材」に登録する
+if st.button("追加", disabled=not ingredient_text.strip()):
     for name in [s.strip() for s in ingredient_text.split(",") if s.strip()]:
         if name not in st.session_state.ingredients:  # 重複防止
             st.session_state.ingredients.append(name)
+    st.session_state.clear_input = True
     st.rerun()
 
-st.subheader("食材の画像アップロード") 
+
+st.subheader("食材の画像アップロード", anchor=False)
 
 uploaded_files = st.file_uploader("食材の画像をアップロードしてください", accept_multiple_files=True, type=["jpg", "jpeg", "png"])
 
@@ -44,7 +184,7 @@ if uploaded_files:
     st.write("アップロードされた画像:")
     for uploaded_file in uploaded_files:
         data = uploaded_file.getvalue()
-        st.image(data, caption=uploaded_file.name, width="stretch")
+        st.image(data, caption=uploaded_file.name, width=250)
 
         results = recognize_image(data)
         names = [r["name"] for r in results]
@@ -62,7 +202,7 @@ if uploaded_files:
             st.rerun()
 
 
-st.subheader("選択中の食材")
+st.subheader("選択中の食材", anchor=False)
 
 if not st.session_state.ingredients:
     st.info("食材を入力するか、画像から選択してください")
@@ -82,7 +222,7 @@ if st.button("レシピを探す", disabled=not st.session_state.ingredients):
 
     found, unknown = recommend(st.session_state.ingredients, top_k=5)
 
-    st.subheader("レシピ検索結果")
+    st.subheader("レシピ検索結果", anchor=False)
 
     # 仕様書 テスト項目4「データに存在しない食材を入力 → 無視され、未登録である旨を表示」
     if unknown:
