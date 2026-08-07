@@ -1,9 +1,9 @@
 import streamlit as st
-import csv
 import io
-from difflib import SequenceMatcher
-from recognize import recognize
-from recommend import recommend
+
+from recipe_app import config, suggest
+from recipe_app.recognize import recognize
+from recipe_app.recommend import recommend
 
 
 @st.cache_data(show_spinner="画像を認識中...")
@@ -20,13 +20,6 @@ SEARCH_SITES = [
 st.title("レシピ提案アプリ")
 st.write("食材からレシピを提案します。")
 st.write("食材をテキストで入力、または画像アップロードで食材を認識させることができます。")
-
-# 入力候補（もしかして...）の元データ
-ingredient_data = []
-with open("data/ingredients.csv", "r", encoding="utf-8-sig") as f:
-    reader = csv.DictReader(f)
-    for row in reader:
-        ingredient_data.append(row)
 
 if "ingredients" not in st.session_state:          # 選択中の食材（テキスト・画像の共通の置き場）
     st.session_state.ingredients = []
@@ -84,80 +77,8 @@ ingredient_text = st.text_input(
 )
 
 # 仕様書 要件1「『トマ』と打ったら『トマト』が表示される」
-suggestions = []
-
-if ingredient_text:
-
-    current_input = ingredient_text.split(",")[-1].strip()
-
-    if current_input:
-        exact_name = False
-
-        for row in ingredient_data:
-
-            name = row["name"].strip()
-
-            if current_input == name:
-                exact_name = True
-                break
-
-        if not exact_name:
-
-            for row in ingredient_data:
-
-                name = row["name"].strip()
-
-                aliases = [
-                    alias.strip()
-                    for alias in row["aliases"].split(";")
-                    if alias.strip()
-                ]
-
-                if current_input in aliases:
-                    suggestions.append(name)
-
-            if len(current_input) >= 2:
-
-                for row in ingredient_data:
-
-                    name = row["name"].strip()
-                    if name.startswith(current_input):
-
-                        suggestions.append(name)
-
-                    aliases = [
-                        alias.strip()
-                        for alias in row["aliases"].split(";")
-                        if alias.strip()
-                    ]
-
-                    for alias in aliases:
-
-                        if alias.startswith(current_input):
-                            suggestions.append(name)
-                            break
-
-                for row in ingredient_data:
-
-                    name = row["name"].strip()
-
-                    aliases = [
-                        alias.strip()
-                        for alias in row["aliases"].split(";")
-                        if alias.strip()
-                    ]
-
-                    for alias in aliases:
-
-                        similarity = SequenceMatcher(None, current_input, alias).ratio()
-
-                        if similarity >= 0.7:
-                            suggestions.append(name)
-                            break
-
-        suggestions = list(dict.fromkeys(suggestions))
-
-        suggestions = suggestions[:3]
+# 候補の算出ロジックは recipe_app/suggest.py に切り出してある
+suggestions = suggest.suggest(ingredient_text)
 
 if suggestions:
 
@@ -278,7 +199,7 @@ if st.button("レシピを探す", disabled=not st.session_state.ingredients):
             st.markdown("---")
 
             col_img, col_info = st.columns([1, 2])
-            col_img.image(f"data/images/{recipe['image']}", width="stretch")
+            col_img.image(str(config.RECIPE_IMAGES_DIR / recipe["image"]), width="stretch")
 
             col_info.subheader(recipe["name"], anchor=False)
             col_info.write(

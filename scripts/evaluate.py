@@ -1,8 +1,18 @@
-from pathlib import Path
-from collections import defaultdict
-from recognize import recognize
+"""画像認識の評価スクリプト。
 
-EVAL_DIR = Path("data/eval_images")
+実行: python scripts/evaluate.py
+"""
+import sys
+from collections import defaultdict
+from pathlib import Path
+
+# scripts/ から親の recipe_app を import できるようにする
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from recipe_app import config                  # noqa: E402
+from recipe_app.recognize import recognize     # noqa: E402
+
+EVAL_DIR = config.EVAL_IMAGES_DIR
 IMAGE_EXTS = {".jpg", ".jpeg", ".png"}
 
 # フォルダ名 → 正解とみなすラベルの集合

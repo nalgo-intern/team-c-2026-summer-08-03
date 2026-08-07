@@ -1,24 +1,14 @@
-import pandas as pd
+"""食材画像の認識（CLIP ViT-B/32 によるゼロショット画像分類）。"""
 from transformers import CLIPModel, CLIPProcessor
 import torch
 from PIL import Image
+
+from . import ingredients
 
 _model = None
 _processor = None
 _labels = None
 _label_features = None
-
-
-def load_labels() -> list[dict]:
-    """ingredients.csv から CLIP の候補ラベルを作る
-    戻り値: [{"name": "玉ねぎ", "en_label": "onion"}, ...]
-    """
-    df = pd.read_csv("data/ingredients.csv")
-
-    food = df[~df["is_seasoning"]] # 調味料を除外
-
-    labels = food[["name", "en_label"]].to_dict(orient="records")
-    return labels
 
 
 def _load():
@@ -34,7 +24,7 @@ def _load():
 
     _model.eval() # 推論モードにする（学習時の挙動を止める）
 
-    _labels = load_labels()
+    _labels = ingredients.load_labels()
     texts = [f"a photo of {label['en_label']}" for label in _labels] # 英語ラベルを使って、CLIPのテキスト入力を作る（CLIPは英語のキャプションで学習されているので、日本語を入れると精度が落ちる）
 
     # ベクトル化する
@@ -76,5 +66,8 @@ def recognize(image, top_k: int = 3) -> list[dict]:
 
 
 if __name__ == "__main__":
-    for r in recognize("data/images/curry_rice.jpg"):
+    # 動作確認: python -m recipe_app.recognize
+    from . import config
+
+    for r in recognize(config.RECIPE_IMAGES_DIR / "curry_rice.jpg"):
         print(r)

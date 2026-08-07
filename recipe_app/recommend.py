@@ -1,14 +1,20 @@
-"""
-① 正規化 （玉葱みたいに万が一、ingredients.csvにある正式名称と別の名前で食材が追加された時に、正式名称に変換する）
-② 事前準備 （recipes.csvの読み込み → TF-IDF 行列（最初の1回だけ））
-③ 推薦 recommend（食材リスト） → 上位5件
+"""レシピの推薦。
 
-仕様書通りに「合致率を第1優先、類似度を第2優先としてソート」する
-つまり並び順はほぼ合致率に左右され、TF-IDFの類似度は合致率が同点の時の決着用
+① 正規化   表記ゆれ（玉葱・たまねぎ）を正式名称に変換する
+② 事前準備 recipes.csv の読み込みと TF-IDF 行列の作成（最初の1回だけ）
+③ 推薦     recommend(食材リスト) → 上位5件
+
+並び順は「合致率と消費率の調和平均」が第1優先、TF-IDF の類似度が第2優先。
+調和平均が同点になったレシピを、珍しい食材を共有している順に並べ替えるのが類似度の役割。
 """
 
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
+
+from . import config
+# ingredients モジュールではなく関数を直接 import しているのは、
+# recommend() の引数名 ingredients と名前が衝突するため。
+from .ingredients import build_alias_map, load_seasonings
 
 # 合致率がこれ未満のレシピは表示しない（仕様書 テスト項目6「合致率が閾値未満 → 該当なし」）
 # 0.5 =「主材料の半分以上が手元にある」。実測では典型的な入力で7〜20件が残り、
@@ -22,31 +28,15 @@ _seasonings = None
 _vectorizer = None
 
 
-def build_alias_map() -> tuple[dict[str, str], pd.DataFrame]:
-    """
-    食材名の正規化を行う関数
-    例: 玉葱 → 玉ねぎ
-    """
-    ingredients_df = pd.read_csv("data/ingredients.csv")
-    # {"玉葱": "玉ねぎ", "たまねぎ": "玉ねぎ", "オニオン": "玉ねぎ", "玉ねぎ": "玉ねぎ"} の形
-    alias_map = {}
-    for _, row in ingredients_df.iterrows():
-        alias_map[row["name"]] = row["name"]
-        for alias in row["aliases"].split(";"):
-            alias_map[alias] = row["name"]
-
-    return alias_map, ingredients_df
-
-
 def _load():
     global _alias_map, _recipes, _tfidf, _seasonings, _vectorizer
     if _alias_map is not None: # すでに読み込まれている場合は何もしない（初回だけ読み込む）
         return
 
-    _alias_map, ingredients_df = build_alias_map()  # 正規化マップを作る（読み込んだcsvも返すことで読み込み回数を減らす）
-    _seasonings = set(ingredients_df[ingredients_df["is_seasoning"]]["name"])  # 調味料のセットを作る
+    _alias_map = build_alias_map()      # 別名 → 正式名称
+    _seasonings = load_seasonings()     # 合致率・消費率の分母から除く調味料
 
-    recipes_df = pd.read_csv("data/recipes.csv")
+    recipes_df = pd.read_csv(config.RECIPES_CSV)
     _recipes = []
     for _, row in recipes_df.iterrows():
         items = [x.strip() for x in row["ingredients"].split(";")]
@@ -132,6 +122,7 @@ def recommend(ingredients: list[str], top_k: int = 5):
 
 
 if __name__ == "__main__":
+    # 動作確認: python -m recipe_app.recommend
     _load()
     oyakodon = next(r for r in _recipes if r["name"] == "親子丼")
     print("主材料:", oyakodon["main"])
